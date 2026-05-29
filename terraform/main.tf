@@ -21,3 +21,5 @@ resource "terraform_data" "account_guard" {
     }
   }
 }
+
+# verify: terraform-plan workflow smoke test
