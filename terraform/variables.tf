@@ -29,8 +29,14 @@ variable "prod_data_lake_bucket" {
 
 variable "prod_bucket_policy_admin_role_arn" {
   type        = string
-  description = "ARN of the prod-account IAM role with s3:PutBucketPolicy on the data lake bucket. Created by parent-repo services/cross-account-grants SAM stack (mrp-cross-account-grants-prod), deployed 2026-05-29."
+  description = "ARN of the prod-account IAM role with s3:Put/Get/DeleteBucketPolicy on the data lake bucket. Created by parent-repo services/cross-account-grants SAM stack (mrp-cross-account-grants-prod), deployed 2026-05-29. Trusted by gha_apply + SSO admin."
   default     = "arn:aws:iam::466231402318:role/mrp-cross-account-grants-prod-data-lake-policy-admin"
+}
+
+variable "prod_bucket_policy_read_role_arn" {
+  type        = string
+  description = "ARN of the prod-account IAM role with s3:GetBucketPolicy ONLY. Used by the prod_read provider alias for data source refresh (gha_plan + gha_apply both assume). Created by parent-repo services/cross-account-grants SAM stack alongside the admin role."
+  default     = "arn:aws:iam::466231402318:role/mrp-cross-account-grants-prod-data-lake-policy-read"
 }
 
 # Note: airflow_ec2_role_name + snowflake_storage_integration_role_name

@@ -105,14 +105,13 @@ resource "aws_iam_policy" "gha_plan_readonly" {
         Resource = "arn:aws:s3:::${var.prod_data_lake_bucket}"
       },
       {
-        # Sub-phase 0a-v: assume prod_admin role to read prod bucket policy via
-        # data.aws_s3_bucket_policy (drift detection on cross-account merge).
-        # Requires gha_plan to be added to the prod_admin role's trust policy
-        # in services/cross-account-grants/template.yaml (parent repo).
-        Sid      = "AssumeProdAdminForDriftRead"
+        # Sub-phase 0a-v: assume prod_read role (read-only) for data source
+        # refresh on prod bucket policy. Scoped to read role only — gha_plan
+        # never needs write access (PR workflow doesn't apply).
+        Sid      = "AssumeProdReadForDriftRead"
         Effect   = "Allow"
         Action   = "sts:AssumeRole"
-        Resource = var.prod_bucket_policy_admin_role_arn
+        Resource = var.prod_bucket_policy_read_role_arn
       }
     ]
   })
@@ -224,12 +223,16 @@ resource "aws_iam_policy" "gha_apply_terraform" {
         Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/mrp-analytics-platform-*"
       },
       {
-        # Sub-phase 0a-v: assume prod_admin role for cross-account bucket
-        # policy management via prod_admin Terraform provider alias.
-        Sid      = "AssumeProdAdminForBucketPolicy"
-        Effect   = "Allow"
-        Action   = "sts:AssumeRole"
-        Resource = var.prod_bucket_policy_admin_role_arn
+        # Sub-phase 0a-v: assume both prod_admin (write) and prod_read (refresh)
+        # roles for cross-account bucket policy management. apply path uses
+        # both providers; prod_read is needed for the refresh that precedes apply.
+        Sid    = "AssumeProdAdminAndReadForBucketPolicy"
+        Effect = "Allow"
+        Action = "sts:AssumeRole"
+        Resource = [
+          var.prod_bucket_policy_admin_role_arn,
+          var.prod_bucket_policy_read_role_arn,
+        ]
       }
     ]
   })

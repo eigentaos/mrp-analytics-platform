@@ -92,10 +92,12 @@ resource "aws_iam_role_policy" "prod_data_lake_read" {
 # Prod-side: bucket policy merge — additive on existing statements
 # ---------------------------------------------------------------------------
 
-# Read existing prod bucket policy through the prod_admin provider so we can
-# merge instead of overwrite. OQ #3 SAM role grants s3:GetBucketPolicy.
+# Read existing prod bucket policy through the prod_read provider so the
+# refresh path doesn't require write perms. Both gha_plan (PR workflow) and
+# gha_apply (push-to-main) can assume the read role; only gha_apply can
+# assume the admin role (used by aws_s3_bucket_policy.prod_data_lake below).
 data "aws_s3_bucket_policy" "existing_prod" {
-  provider = aws.prod_admin
+  provider = aws.prod_read
   bucket   = var.prod_data_lake_bucket
 }
 
