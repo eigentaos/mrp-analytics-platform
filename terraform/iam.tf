@@ -13,12 +13,19 @@ data "tls_certificate" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
 
-# Resolve the state-bucket KMS alias → underlying key ARN.
+# State-bucket KMS key ARN.
+#
 # IAM policies must scope to the key ARN (arn:...:key/<key-id>) not the
 # alias ARN (arn:...:alias/<name>) — alias is a pointer; AWS evaluates
 # permissions against the key itself.
-data "aws_kms_alias" "tfstate" {
-  name = "alias/mrp-analytics-platform-tfstate"
+#
+# We hardcode rather than using data "aws_kms_alias" because that data
+# source requires kms:ListAliases on Resource:* (account-scoped list op),
+# which would force us to grant a broader permission than necessary. The
+# key ARN is stable (bootstrap-managed, will never be re-created without
+# explicit state surgery), so hardcoding is the lower-risk choice.
+locals {
+  tfstate_kms_key_arn = "arn:aws:kms:us-east-1:416153529907:key/b27a6ae7-5cad-4fde-a0bf-99ebb83b2c05"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -79,7 +86,7 @@ resource "aws_iam_policy" "gha_plan_readonly" {
         Sid      = "StateKmsRead"
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-        Resource = data.aws_kms_alias.tfstate.target_key_arn
+        Resource = local.tfstate_kms_key_arn
       },
       {
         Sid    = "IamRead"
@@ -156,7 +163,7 @@ resource "aws_iam_policy" "gha_apply_terraform" {
         Sid      = "StateKmsFull"
         Effect   = "Allow"
         Action   = "kms:*"
-        Resource = data.aws_kms_alias.tfstate.target_key_arn
+        Resource = local.tfstate_kms_key_arn
       },
       {
         Sid    = "IamManageProjectScoped"
