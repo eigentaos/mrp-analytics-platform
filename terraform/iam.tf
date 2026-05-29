@@ -103,6 +103,16 @@ resource "aws_iam_policy" "gha_plan_readonly" {
         Effect   = "Allow"
         Action   = ["s3:GetBucketPolicy", "s3:GetBucketVersioning", "s3:GetBucketEncryption"]
         Resource = "arn:aws:s3:::${var.prod_data_lake_bucket}"
+      },
+      {
+        # Sub-phase 0a-v: assume prod_admin role to read prod bucket policy via
+        # data.aws_s3_bucket_policy (drift detection on cross-account merge).
+        # Requires gha_plan to be added to the prod_admin role's trust policy
+        # in services/cross-account-grants/template.yaml (parent repo).
+        Sid      = "AssumeProdAdminForDriftRead"
+        Effect   = "Allow"
+        Action   = "sts:AssumeRole"
+        Resource = var.prod_bucket_policy_admin_role_arn
       }
     ]
   })
@@ -212,6 +222,14 @@ resource "aws_iam_policy" "gha_apply_terraform" {
         Effect   = "Allow"
         Action   = "iam:PassRole"
         Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/mrp-analytics-platform-*"
+      },
+      {
+        # Sub-phase 0a-v: assume prod_admin role for cross-account bucket
+        # policy management via prod_admin Terraform provider alias.
+        Sid      = "AssumeProdAdminForBucketPolicy"
+        Effect   = "Allow"
+        Action   = "sts:AssumeRole"
+        Resource = var.prod_bucket_policy_admin_role_arn
       }
     ]
   })

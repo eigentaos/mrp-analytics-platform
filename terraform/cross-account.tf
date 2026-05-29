@@ -147,12 +147,22 @@ data "aws_iam_policy_document" "prod_bucket_additions" {
 }
 
 locals {
-  existing_prod_statements = jsondecode(data.aws_s3_bucket_policy.existing_prod.policy).Statement
-  new_prod_statements      = jsondecode(data.aws_iam_policy_document.prod_bucket_additions.json).Statement
+  # IDEMPOTENCY: drop any statements from a prior apply (Sids prefixed with
+  # MrpAnalyticsPlatform) before concatenating the canonical new set. Without
+  # this filter, each terraform apply would accumulate statements because
+  # data.aws_s3_bucket_policy reads the post-prior-apply state. With the
+  # filter, the merge converges to the same 4-statement output regardless of
+  # starting state (existing foreign statements preserved, our 3 statements
+  # always set fresh).
+  foreign_prod_statements = [
+    for s in jsondecode(data.aws_s3_bucket_policy.existing_prod.policy).Statement :
+    s if !startswith(try(s.Sid, ""), "MrpAnalyticsPlatform")
+  ]
+  new_prod_statements = jsondecode(data.aws_iam_policy_document.prod_bucket_additions.json).Statement
 
   merged_prod_policy = jsonencode({
     Version   = "2012-10-17"
-    Statement = concat(local.existing_prod_statements, local.new_prod_statements)
+    Statement = concat(local.foreign_prod_statements, local.new_prod_statements)
   })
 }
 
