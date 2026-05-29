@@ -13,6 +13,14 @@ data "tls_certificate" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
 
+# Resolve the state-bucket KMS alias → underlying key ARN.
+# IAM policies must scope to the key ARN (arn:...:key/<key-id>) not the
+# alias ARN (arn:...:alias/<name>) — alias is a pointer; AWS evaluates
+# permissions against the key itself.
+data "aws_kms_alias" "tfstate" {
+  name = "alias/mrp-analytics-platform-tfstate"
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
@@ -71,7 +79,7 @@ resource "aws_iam_policy" "gha_plan_readonly" {
         Sid      = "StateKmsRead"
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
-        Resource = "arn:aws:kms:us-east-1:${data.aws_caller_identity.current.account_id}:alias/mrp-analytics-platform-tfstate"
+        Resource = data.aws_kms_alias.tfstate.target_key_arn
       },
       {
         Sid    = "IamRead"
@@ -148,7 +156,7 @@ resource "aws_iam_policy" "gha_apply_terraform" {
         Sid      = "StateKmsFull"
         Effect   = "Allow"
         Action   = "kms:*"
-        Resource = "arn:aws:kms:us-east-1:${data.aws_caller_identity.current.account_id}:alias/mrp-analytics-platform-tfstate"
+        Resource = data.aws_kms_alias.tfstate.target_key_arn
       },
       {
         Sid    = "IamManageProjectScoped"
