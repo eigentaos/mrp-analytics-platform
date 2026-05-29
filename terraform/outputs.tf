@@ -22,3 +22,13 @@ output "github_oidc_provider_arn" {
   value       = aws_iam_openid_connect_provider.github.arn
   description = "GitHub OIDC provider ARN (referenced by future role trust policies)"
 }
+
+output "prod_data_lake_read_role_arn" {
+  value       = aws_iam_role.prod_data_lake_read.arn
+  description = "Substrate-side role for reading prod FRED data. 0a-v trust = gha_apply + SSO admin; narrowed to airflow-ec2 + snowflake-storage-integration in 0b."
+}
+
+output "prod_data_lake_policy_size" {
+  value       = length(local.merged_prod_policy)
+  description = "Merged prod bucket policy size in bytes (AWS limit: 20480)"
+}
