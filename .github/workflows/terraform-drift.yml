@@ -43,13 +43,11 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -input=false
-          # GHA bash runs with -e -o pipefail by default. terraform plan
-          # exits 2 on drift, which with pipefail makes the pipeline exit 2,
-          # which with -e terminates the script BEFORE the echo runs —
-          # leaving exit_code unset. Scope set +e/+o pipefail around the
-          # plan call so the post-plan echo always runs.
+          # GHA bash runs with -e -o pipefail. terraform plan -detailed-exitcode
+          # exits 2 on drift; with -e the script would terminate before
+          # exit_code is captured. Use file redirect (no pipe) so $? cleanly
+          # captures terraform's exit, and disable -e around the call.
           set +e
-          set +o pipefail
           terraform plan -detailed-exitcode -no-color -input=false \
             -target=aws_iam_openid_connect_provider.github \
             -target=aws_iam_role.gha_plan \
@@ -60,10 +58,12 @@ jobs:
             -target=aws_iam_role_policy_attachment.gha_plan \
             -target=aws_iam_role_policy_attachment.gha_apply \
             -target=aws_iam_role_policy.prod_data_lake_read \
-            2>&1 | tee plan.txt
-          exit_code=${PIPESTATUS[0]}
-          set -eo pipefail
+            > plan.txt 2>&1
+          exit_code=$?
+          set -e
+          cat plan.txt
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "Captured exit_code=$exit_code"
         continue-on-error: true
 
       - name: Open issue on drift
