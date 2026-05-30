@@ -29,12 +29,31 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
+      # Drift detection is scoped to substrate IAM resources via -target.
+      # Cross-account resources (aws_s3_bucket_policy.prod_data_lake) require
+      # assuming the prod_admin role, which gha_plan is NOT trusted by (and
+      # shouldn't be — write trust would defeat the admin/read separation).
+      #
+      # Cat 2 deferral per ADR 0003: refactor cross-account.tf into a separate
+      # state file when ≥3 cross-account services exist. Trigger: 2nd
+      # substrate writing to a prod resource. Until then, cross-account drift
+      # is monitored via CloudTrail PutBucketPolicy events, not this workflow.
       - name: Terraform plan -detailed-exitcode
         id: plan
         working-directory: terraform
         run: |
           terraform init -input=false
-          terraform plan -detailed-exitcode -no-color -input=false 2>&1 | tee plan.txt
+          terraform plan -detailed-exitcode -refresh-only -no-color -input=false \
+            -target=aws_iam_openid_connect_provider.github \
+            -target=aws_iam_role.gha_plan \
+            -target=aws_iam_role.gha_apply \
+            -target=aws_iam_role.prod_data_lake_read \
+            -target=aws_iam_policy.gha_plan_readonly \
+            -target=aws_iam_policy.gha_apply_terraform \
+            -target=aws_iam_role_policy_attachment.gha_plan \
+            -target=aws_iam_role_policy_attachment.gha_apply \
+            -target=aws_iam_role_policy.prod_data_lake_read \
+            2>&1 | tee plan.txt
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
