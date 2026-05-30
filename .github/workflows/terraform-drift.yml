@@ -43,7 +43,7 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -input=false
-          terraform plan -detailed-exitcode -refresh-only -no-color -input=false \
+          terraform plan -detailed-exitcode -no-color -input=false \
             -target=aws_iam_openid_connect_provider.github \
             -target=aws_iam_role.gha_plan \
             -target=aws_iam_role.gha_apply \
