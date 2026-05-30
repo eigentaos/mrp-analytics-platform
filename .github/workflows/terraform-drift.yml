@@ -43,13 +43,13 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -input=false
-          # Use || exit_code=$? pattern: -e safe because the conditional
-          # branch always succeeds, and $? is captured before any other
-          # command can clobber it. Avoid pipe-to-tee (PIPESTATUS quirks
-          # under pipefail). file redirect + cat afterwards keeps plan.txt
-          # available for the issue body.
-          exit_code=0
-          terraform plan -detailed-exitcode -no-color -input=false \
+          # Run plan WITHOUT -detailed-exitcode (terraform 1.7.5 returns 0
+          # from -detailed-exitcode under some -target combos despite
+          # Plan: 1 to change being printed — observed reliably in CI on
+          # 2026-05-30, root cause unknown). Detect drift by parsing plan
+          # text for "Plan: X to ..." with non-zero counts.
+          terraform_exit=0
+          terraform plan -no-color -input=false \
             -target=aws_iam_openid_connect_provider.github \
             -target=aws_iam_role.gha_plan \
             -target=aws_iam_role.gha_apply \
@@ -59,10 +59,24 @@ jobs:
             -target=aws_iam_role_policy_attachment.gha_plan \
             -target=aws_iam_role_policy_attachment.gha_apply \
             -target=aws_iam_role_policy.prod_data_lake_read \
-            > plan.txt 2>&1 || exit_code=$?
+            > plan.txt 2>&1 || terraform_exit=$?
           cat plan.txt
-          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
-          echo "Captured exit_code=$exit_code"
+          if [ "$terraform_exit" -ne 0 ] && [ "$terraform_exit" -ne 2 ]; then
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+            echo "terraform errored (exit=$terraform_exit)"
+          elif grep -qE "Plan: 0 to add, 0 to change, 0 to destroy" plan.txt; then
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            echo "no drift"
+          elif grep -qE "No changes\." plan.txt; then
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            echo "no drift"
+          elif grep -qE "Plan: [0-9]+ to" plan.txt; then
+            echo "exit_code=2" >> "$GITHUB_OUTPUT"
+            echo "DRIFT detected via text parse"
+          else
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+            echo "terraform output unparseable"
+          fi
         continue-on-error: true
 
       - name: Open issue on drift
