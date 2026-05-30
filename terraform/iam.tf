@@ -40,23 +40,44 @@ resource "aws_iam_openid_connect_provider" "github" {
 
 resource "aws_iam_role" "gha_plan" {
   name        = "mrp-analytics-platform-gha-plan"
-  description = "GHA OIDC role for terraform plan (PR-triggered, read-only)"
+  description = "GHA OIDC role for terraform plan (PR-triggered + main-branch scheduled drift; read-only)"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
-      Action    = "sts:AssumeRoleWithWebIdentity"
-      Condition = {
-        StringEquals = {
-          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+    Statement = [
+      {
+        # PR-triggered plan workflow (terraform-plan.yml)
+        Sid       = "TrustPullRequests"
+        Effect    = "Allow"
+        Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+        Action    = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:pull_request"
+          }
         }
-        StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:pull_request"
+      },
+      {
+        # Scheduled drift detection + workflow_dispatch (terraform-drift.yml).
+        # Schedule + manual dispatch on main branch use ref:refs/heads/main
+        # sub claim. Trust is read-only equivalent — gha_plan policy doesn't
+        # grant writes, so widening sub trust only adds drift-detection
+        # ability, not mutation capability.
+        Sid       = "TrustMainBranchDriftRuns"
+        Effect    = "Allow"
+        Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+        Action    = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:ref:refs/heads/main"
+          }
         }
       }
-    }]
+    ]
   })
 }
 
