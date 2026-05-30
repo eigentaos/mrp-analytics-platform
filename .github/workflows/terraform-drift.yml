@@ -43,11 +43,12 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -input=false
-          # GHA bash runs with -e -o pipefail. terraform plan -detailed-exitcode
-          # exits 2 on drift; with -e the script would terminate before
-          # exit_code is captured. Use file redirect (no pipe) so $? cleanly
-          # captures terraform's exit, and disable -e around the call.
-          set +e
+          # Use || exit_code=$? pattern: -e safe because the conditional
+          # branch always succeeds, and $? is captured before any other
+          # command can clobber it. Avoid pipe-to-tee (PIPESTATUS quirks
+          # under pipefail). file redirect + cat afterwards keeps plan.txt
+          # available for the issue body.
+          exit_code=0
           terraform plan -detailed-exitcode -no-color -input=false \
             -target=aws_iam_openid_connect_provider.github \
             -target=aws_iam_role.gha_plan \
@@ -58,9 +59,7 @@ jobs:
             -target=aws_iam_role_policy_attachment.gha_plan \
             -target=aws_iam_role_policy_attachment.gha_apply \
             -target=aws_iam_role_policy.prod_data_lake_read \
-            > plan.txt 2>&1
-          exit_code=$?
-          set -e
+            > plan.txt 2>&1 || exit_code=$?
           cat plan.txt
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           echo "Captured exit_code=$exit_code"
